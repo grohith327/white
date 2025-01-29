@@ -1,5 +1,7 @@
 use clap::Parser;
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::process;
 
 #[derive(Parser, Debug)]
@@ -34,7 +36,15 @@ fn remove_comments(input: &str) -> String {
         .join("\n")
 }
 
-fn main() {
+fn format_code(input: &str) -> String {
+    input
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     let mut file_contents = match fs::read_to_string(&args.file) {
@@ -49,5 +59,10 @@ fn main() {
     };
 
     file_contents = remove_comments(&file_contents);
-    println!("File contents:\n{}", file_contents.trim());
+    file_contents = format_code(&file_contents);
+    file_contents = file_contents.trim().to_string();
+
+    let mut new_file = File::create("results/test.py")?;
+    let _ = new_file.write_all(file_contents.as_bytes());
+    Ok(())
 }
