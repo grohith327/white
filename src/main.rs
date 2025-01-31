@@ -1,15 +1,16 @@
 use clap::Parser;
 use rand::Rng;
 use std::fs;
-use std::fs::File;
-use std::io::Write;
 use std::process;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     #[clap(short, long)]
-    file: String,
+    file: Option<String>,
+
+    #[clap(short, long)]
+    dir: Option<String>,
 }
 
 fn add_random_spacing(input: &str) -> String {
@@ -89,21 +90,35 @@ fn format_lines(input: &str) -> String {
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
-    let mut file_contents = match fs::read_to_string(&args.file) {
-        Ok(contents) => {
-            println!("Succesfully loaded file contents");
-            contents
-        }
-        Err(err) => {
-            eprint!("Error reading file {}: {}", args.file, err);
-            process::exit(1);
-        }
-    };
+    if args.dir.is_none() && args.file.is_none() {
+        eprint!("❌ Error: provide a file or directory to proceed");
+        process::exit(1);
+    }
 
-    file_contents = format_lines(&file_contents);
-    file_contents = file_contents.trim().to_string();
+    if !args.dir.is_none() && !args.file.is_none() {
+        eprint!("❌ Error: provide either a directory or a file. Not both.");
+        process::exit(1);
+    }
 
-    let mut new_file = File::create("results/test.py")?;
-    let _ = new_file.write_all(file_contents.as_bytes());
+    match args.file {
+        Some(ref value) => {
+            println!("Formating file...");
+
+            let mut file_contents = match fs::read_to_string(&value) {
+                Ok(contents) => contents,
+                Err(err) => {
+                    eprint!("Error reading file {}: {}", value, err);
+                    process::exit(1);
+                }
+            };
+
+            file_contents = format_lines(&file_contents);
+            file_contents = file_contents.trim().to_string();
+            fs::write(value, file_contents)?;
+        }
+        None => {}
+    }
+
+    println!("✅ Success");
     Ok(())
 }
