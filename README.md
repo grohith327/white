@@ -28,11 +28,11 @@ cargo install --path .
 Format a single file
 
 ```bash
-white -f smamples/avl_tree.py
+white -f samples/avl_tree.py
 ```
 
 Format all files in a package
 
 ```bash
-white -d smamples/ds
+white -d samples/ds
 ```
