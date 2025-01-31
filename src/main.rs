@@ -1,7 +1,14 @@
 use clap::Parser;
+use crossbeam::scope;
+use num_cpus;
 use rand::Rng;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::Path;
 use std::process;
+use std::sync::{Arc, Mutex};
+use walkdir::WalkDir;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -32,12 +39,14 @@ fn add_random_spacing(input: &str) -> String {
         } else if (i < chars.len() - 1 && c == '=' && chars[i + 1] == '=')
             || (i < chars.len() - 1 && c == '<' && chars[i + 1] == '=')
             || (i < chars.len() - 1 && c == '>' && chars[i + 1] == '=')
+            || (i < chars.len() - 1 && c == '+' && chars[i + 1] == '=')
         {
             result.push_str(&" ".repeat(rng.random_range(1..=5)));
             result.push(c);
         } else if (c == '=' && chars[i - 1] == '=')
             || (c == '=' && chars[i - 1] == '>')
             || (c == '=' && chars[i - 1] == '<')
+            || (c == '=' && chars[i - 1] == '+')
         {
             result.push(c);
             result.push_str(&" ".repeat(rng.random_range(1..=5)));
@@ -87,6 +96,19 @@ fn format_lines(input: &str) -> String {
         .join("\n")
 }
 
+fn format_file(path: &str) -> String {
+    let mut file_contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(err) => {
+            eprint!("Error reading file {}: {}", path, err);
+            process::exit(1);
+        }
+    };
+
+    file_contents = format_lines(&file_contents);
+    file_contents.trim().to_string()
+}
+
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
@@ -103,18 +125,47 @@ fn main() -> std::io::Result<()> {
     match args.file {
         Some(ref value) => {
             println!("Formating file...");
+            let formatted_content = format_file(&value);
+            fs::write(value, formatted_content)?;
+        }
+        None => {}
+    }
 
-            let mut file_contents = match fs::read_to_string(&value) {
-                Ok(contents) => contents,
-                Err(err) => {
-                    eprint!("Error reading file {}: {}", value, err);
-                    process::exit(1);
+    match args.dir {
+        Some(ref value) => {
+            println!("Formatting files in directory...");
+            let python_files: Vec<String> = WalkDir::new(value)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "py"))
+                .map(|entry| entry.path().display().to_string())
+                .collect();
+
+            let num_threads = num_cpus::get();
+            let paths = Arc::new(Mutex::new(python_files));
+
+            scope(|s| {
+                for _ in 0..num_threads {
+                    let paths_clone = Arc::clone(&paths);
+
+                    s.spawn(move |_| {
+                        while let Some(s) = paths_clone.lock().unwrap().pop() {
+                            let formatted_file = format_file(&s);
+                            let path = Path::new(&s);
+                            let mut output_file = OpenOptions::new()
+                                .create(true)
+                                .write(true)
+                                .open(path)
+                                .unwrap();
+
+                            if let Err(e) = writeln!(output_file, "{}", formatted_file) {
+                                eprintln!("Failed to format file: {}", e);
+                            }
+                        }
+                    });
                 }
-            };
-
-            file_contents = format_lines(&file_contents);
-            file_contents = file_contents.trim().to_string();
-            fs::write(value, file_contents)?;
+            })
+            .unwrap();
         }
         None => {}
     }
