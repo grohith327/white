@@ -1,4 +1,5 @@
 use clap::Parser;
+use rand::Rng;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -11,11 +12,58 @@ struct Args {
     file: String,
 }
 
-fn remove_comments(input: &str) -> String {
+fn add_random_spacing(input: &str) -> String {
+    let mut rng = rand::rng();
+    let mut result = String::new();
+    let mut inside_parantheses = false;
+    let chars: Vec<char> = input.chars().collect();
+
+    for i in 0..chars.len() {
+        let c = chars[i];
+        if c == '(' {
+            inside_parantheses = true;
+            result.push(c);
+            result.push_str(&" ".repeat(rng.random_range(1..=5)));
+        } else if c == ')' {
+            inside_parantheses = false;
+            result.push_str(&" ".repeat(rng.random_range(1..=5)));
+            result.push(c);
+        } else if (i < chars.len() - 1 && c == '=' && chars[i + 1] == '=')
+            || (i < chars.len() - 1 && c == '<' && chars[i + 1] == '=')
+            || (i < chars.len() - 1 && c == '>' && chars[i + 1] == '=')
+        {
+            result.push_str(&" ".repeat(rng.random_range(1..=5)));
+            result.push(c);
+        } else if (c == '=' && chars[i - 1] == '=')
+            || (c == '=' && chars[i - 1] == '>')
+            || (c == '=' && chars[i - 1] == '<')
+        {
+            result.push(c);
+            result.push_str(&" ".repeat(rng.random_range(1..=5)));
+        } else if inside_parantheses && c == ',' || c == '=' || c == '<' || c == '>' {
+            result.push_str(&" ".repeat(rng.random_range(1..=5)));
+            result.push(c);
+            result.push_str(&" ".repeat(rng.random_range(1..=5)));
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
+fn update_spacing(input: &str) -> String {
+    let space_count = input.chars().take_while(|&c| c.is_whitespace()).count();
+    let updated_whitespace = " ".repeat(space_count / 2);
+    format!("{}{}", updated_whitespace, input.trim_start())
+}
+
+fn format_lines(input: &str) -> String {
     let mut inside_docstring = false;
 
     input
         .lines()
+        .filter(|line| !line.is_empty())
         .filter(|line| {
             let trimmed = line.trim();
             if trimmed.starts_with("\"\"\"") {
@@ -32,14 +80,8 @@ fn remove_comments(input: &str) -> String {
                 .map_or(line, |(before, _)| before)
                 .trim_end()
         })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn format_code(input: &str) -> String {
-    input
-        .lines()
-        .filter(|line| !line.is_empty())
+        .map(|line| add_random_spacing(line))
+        .map(|line| update_spacing(&line))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -58,8 +100,7 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    file_contents = remove_comments(&file_contents);
-    file_contents = format_code(&file_contents);
+    file_contents = format_lines(&file_contents);
     file_contents = file_contents.trim().to_string();
 
     let mut new_file = File::create("results/test.py")?;
